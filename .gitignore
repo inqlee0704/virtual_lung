@@ -1,0 +1,4 @@
+*.ipynb
+monit
+RESULTS
+wandb
