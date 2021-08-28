@@ -59,6 +59,53 @@ class LungDataset_3D:
                 'image': torch.tensor(img.copy())
                 }
 
+
+class LungDataset_2D:
+    def __init__(self,subjlist, slices, augmentations=None, img_size=64):
+        self.subj_paths = subjlist.loc[:,'ImgDir'].values
+        self.img_paths = [os.path.join(subj_path,'zunu_vida-ct.img') for subj_path in self.subj_paths]
+        self.slices = slices
+        self.pat_num = None
+        self.img = None
+        self.img_size = img_size
+        self.resize_factor = img_size/512
+        self.augmentations = augmentations
+
+    def __len__(self):
+        return len(self.slices)
+
+    def __getitem__(self,idx):
+        slc = self.slices[idx]
+        if self.pat_num != slc[0]:
+            self.img, hdr = load(self.img_paths[slc[0]])
+            # Reample 512x512xz -> 64x64xz
+            # self.img = resample(self.img,hdr,new_shape=(self.img_size,self.img_size,self.img.shape[2]))
+            self.img = (self.img-np.min(self.img))/(np.max(self.img)-np.min(self.img))
+            self.pat_num = slc[0]
+        img = self.img[:,:,slc[1]]
+        img = scipy.ndimage.interpolation.zoom(img,self.resize_factor, mode='nearest')
+        img = img[None,:]
+        return {
+                'image': torch.tensor(img.copy())
+                }
+
+
+def slice_loader(subjlist):
+    print('Loading Data')
+    subj_paths = subjlist.loc[:,'ImgDir'].values
+    img_paths = [os.path.join(subj_path,'zunu_vida-ct.img') for subj_path in subj_paths]
+    mask_paths = [os.path.join(subj_path,'ZUNU_vida-airtree.img.gz') for subj_path in subj_paths]
+    slices = []
+    for ii in range(len(mask_paths)):
+        label,_ = load(mask_paths[ii])
+        img,_ = load(img_paths[ii])
+        if img.shape != label.shape:
+            print('Dimension does not match: ')
+            print(subjlist.loc[ii,'ImgDir'])
+        for jj in range(label.shape[2]):
+            slices.append((ii,jj))
+    return slices
+
 """
 Prepare train & valid dataloaders
 """
@@ -109,25 +156,3 @@ def prep_dataloader(c,n_case=0,LOAD_ALL=False):
 
     return train_loader, valid_loader
 
-def get_train_aug():
-    return A.Compose([
-        A.Rotate(limit=10),
-        A.OneOf([
-            A.HorizontalFlip(),
-            A.VerticalFlip(),
-        ],p=0.5),
-        A.OneOf([
-            A.Blur(blur_limit=5),
-            A.MotionBlur(blur_limit=7),
-            A.GaussianBlur(blur_limit=(3,7)),
-        ],p=0.5),
-        # ToTensorV2()
-    ])
-
-# def get_valid_aug():
-#     return A.Compose([
-#         A.OneOf([
-#             A.HorizontalFlip(),
-#             A.VerticalFlip(),
-#         ],p=0.4),
-#     ])
